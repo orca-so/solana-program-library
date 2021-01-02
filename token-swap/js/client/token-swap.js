@@ -83,6 +83,7 @@ export const TokenSwapLayout: typeof BufferLayout.Structure = BufferLayout.struc
 export const CurveType = Object.freeze({
   ConstantProduct: 0, // Constant product curve, Uniswap-style
   ConstantPrice: 1, // Constant price curve, always X amount of A token for 1 B token, where X is defined at init
+  Stable: 2,
   Offset: 3, // Offset curve, like Uniswap, but with an additional offset on the token B side
 });
 
@@ -289,6 +290,7 @@ export class TokenSwap {
     hostFeeNumerator: number,
     hostFeeDenominator: number,
     curveType: number,
+    amp?: number,
   ): TransactionInstruction {
     const keys = [
       {pubkey: tokenSwapAccount.publicKey, isSigner: false, isWritable: true},
@@ -312,8 +314,10 @@ export class TokenSwap {
       BufferLayout.nu64('hostFeeNumerator'),
       BufferLayout.nu64('hostFeeDenominator'),
       BufferLayout.u8('curveType'),
-      BufferLayout.blob(32, 'curveParameters'),
+      BufferLayout.nu64('amp'),
+      BufferLayout.blob(24, 'curveParameters'),
     ]);
+
     let data = Buffer.alloc(1024);
     {
       const encodeLength = commandDataLayout.encode(
@@ -329,6 +333,7 @@ export class TokenSwap {
           hostFeeNumerator,
           hostFeeDenominator,
           curveType,
+          amp,
         },
         data,
       );

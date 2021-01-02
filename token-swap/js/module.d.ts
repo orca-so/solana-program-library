@@ -1,4 +1,4 @@
-declare module '@solana/spl-token-swap' {
+declare module '@orca-so/spl-token-swap' {
   import {Buffer} from 'buffer';
   import {Layout} from 'buffer-layout';
   import {
@@ -17,7 +17,12 @@ declare module '@solana/spl-token-swap' {
   }
 
   export const TokenSwapLayout: Layout;
-  export const CurveType: Object;
+  export const CurveType: {
+    ConstantProduct: 0;
+    ConstantPrice: 1;
+    Stable: 2;
+    Offset: 3;
+  };
 
   export class TokenSwap {
     constructor(

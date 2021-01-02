@@ -5,7 +5,7 @@
  *
  */
 
-declare module '@solana/spl-token-swap' {
+declare module '@orca-so/spl-token-swap' {
   // === client/token-swap.js ===
   declare export class Numberu64 extends BN {
     toBuffer(): Buffer;
@@ -14,7 +14,12 @@ declare module '@solana/spl-token-swap' {
 
   declare export var TokenSwapLayout: Layout;
 
-  declare export var CurveType: Object;
+  declare export var CurveType: {
+    ConstantProduct: 0,
+    ConstantPrice: 1,
+    Stable: 2,
+    Offset: 3,
+  };
 
   declare export class TokenSwap {
     constructor(
