@@ -1,19 +1,20 @@
 {
   "name": "@orca-so/spl-token-swap",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "SPL Token Swap JavaScript API",
   "license": "MIT",
   "author": "Solana Maintainers <maintainers@solana.foundation>",
   "homepage": "https://solana.com/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/solana-labs/solana-program-library"
+    "url": "https://github.com/orca-so/solana-program-library"
   },
   "bugs": {
     "url": "https://github.com/solana-labs/solana-program-library/issues"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
   },
   "main": "lib/index.cjs.js",
   "module": "lib/index.esm.js",
