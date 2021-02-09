@@ -87,7 +87,7 @@ class Numberu64 extends BN__default['default'] {
  * @private
  */
 
-const TokenSwapLayout = BufferLayout.struct([BufferLayout.u8('isInitialized'), BufferLayout.u8('nonce'), publicKey('tokenProgramId'), publicKey('tokenAccountA'), publicKey('tokenAccountB'), publicKey('tokenPool'), publicKey('mintA'), publicKey('mintB'), publicKey('feeAccount'), uint64('tradeFeeNumerator'), uint64('tradeFeeDenominator'), uint64('ownerTradeFeeNumerator'), uint64('ownerTradeFeeDenominator'), uint64('ownerWithdrawFeeNumerator'), uint64('ownerWithdrawFeeDenominator'), uint64('hostFeeNumerator'), uint64('hostFeeDenominator'), BufferLayout.u8('curveType'), BufferLayout.blob(32, 'curveParameters')]);
+const TokenSwapLayout = BufferLayout.struct([BufferLayout.u8('version'), BufferLayout.u8('isInitialized'), BufferLayout.u8('nonce'), publicKey('tokenProgramId'), publicKey('tokenAccountA'), publicKey('tokenAccountB'), publicKey('tokenPool'), publicKey('mintA'), publicKey('mintB'), publicKey('feeAccount'), uint64('tradeFeeNumerator'), uint64('tradeFeeDenominator'), uint64('ownerTradeFeeNumerator'), uint64('ownerTradeFeeDenominator'), uint64('ownerWithdrawFeeNumerator'), uint64('ownerWithdrawFeeDenominator'), uint64('hostFeeNumerator'), uint64('hostFeeDenominator'), BufferLayout.u8('curveType'), BufferLayout.blob(32, 'curveParameters')]);
 const CurveType = Object.freeze({
   ConstantProduct: 0,
   // Constant product curve, Uniswap-style
@@ -385,7 +385,7 @@ class TokenSwap {
    */
 
 
-  static async createTokenSwap(connection, payer, tokenSwapAccount, authority, tokenAccountA, tokenAccountB, poolToken, mintA, mintB, feeAccount, tokenAccountPool, swapProgramId, tokenProgramId, nonce, tradeFeeNumerator, tradeFeeDenominator, ownerTradeFeeNumerator, ownerTradeFeeDenominator, ownerWithdrawFeeNumerator, ownerWithdrawFeeDenominator, hostFeeNumerator, hostFeeDenominator, curveType) {
+  static async createTokenSwap(connection, payer, tokenSwapAccount, authority, tokenAccountA, tokenAccountB, poolToken, mintA, mintB, feeAccount, tokenAccountPool, swapProgramId, tokenProgramId, nonce, tradeFeeNumerator, tradeFeeDenominator, ownerTradeFeeNumerator, ownerTradeFeeDenominator, ownerWithdrawFeeNumerator, ownerWithdrawFeeDenominator, hostFeeNumerator, hostFeeDenominator, curveType, amp) {
     let transaction;
     const tokenSwap = new TokenSwap(connection, tokenSwapAccount.publicKey, swapProgramId, tokenProgramId, poolToken, feeAccount, authority, tokenAccountA, tokenAccountB, mintA, mintB, new Numberu64(tradeFeeNumerator), new Numberu64(tradeFeeDenominator), new Numberu64(ownerTradeFeeNumerator), new Numberu64(ownerTradeFeeDenominator), new Numberu64(ownerWithdrawFeeNumerator), new Numberu64(ownerWithdrawFeeDenominator), new Numberu64(hostFeeNumerator), new Numberu64(hostFeeDenominator), curveType, payer); // Allocate memory for the account
 
@@ -398,7 +398,7 @@ class TokenSwap {
       space: TokenSwapLayout.span,
       programId: swapProgramId
     }));
-    const instruction = TokenSwap.createInitSwapInstruction(tokenSwapAccount, authority, tokenAccountA, tokenAccountB, poolToken, feeAccount, tokenAccountPool, tokenProgramId, swapProgramId, nonce, tradeFeeNumerator, tradeFeeDenominator, ownerTradeFeeNumerator, ownerTradeFeeDenominator, ownerWithdrawFeeNumerator, ownerWithdrawFeeDenominator, hostFeeNumerator, hostFeeDenominator, curveType);
+    const instruction = TokenSwap.createInitSwapInstruction(tokenSwapAccount, authority, tokenAccountA, tokenAccountB, poolToken, feeAccount, tokenAccountPool, tokenProgramId, swapProgramId, nonce, tradeFeeNumerator, tradeFeeDenominator, ownerTradeFeeNumerator, ownerTradeFeeDenominator, ownerWithdrawFeeNumerator, ownerWithdrawFeeDenominator, hostFeeNumerator, hostFeeDenominator, curveType, amp);
     transaction.add(instruction);
     await sendAndConfirmTransaction('createAccount and InitializeSwap', connection, transaction, payer, tokenSwapAccount);
     return tokenSwap;
@@ -410,16 +410,18 @@ class TokenSwap {
    * @param poolSource Pool's source token account
    * @param poolDestination Pool's destination token account
    * @param userDestination User's destination token account
+   * @param hostFeeAccount Host account to gather fees
+   * @param userTransferAuthority Account delegated to transfer user's tokens
    * @param amountIn Amount to transfer from source account
    * @param minimumAmountOut Minimum amount of tokens the user will receive
    */
 
 
-  async swap(userSource, poolSource, poolDestination, userDestination, hostFeeAccount, amountIn, minimumAmountOut) {
-    return await sendAndConfirmTransaction('swap', this.connection, new web3_js.Transaction().add(TokenSwap.swapInstruction(this.tokenSwap, this.authority, userSource, poolSource, poolDestination, userDestination, this.poolToken, this.feeAccount, hostFeeAccount, this.swapProgramId, this.tokenProgramId, amountIn, minimumAmountOut)), this.payer);
+  async swap(userSource, poolSource, poolDestination, userDestination, hostFeeAccount, userTransferAuthority, amountIn, minimumAmountOut) {
+    return await sendAndConfirmTransaction('swap', this.connection, new web3_js.Transaction().add(TokenSwap.swapInstruction(this.tokenSwap, this.authority, userTransferAuthority.publicKey, userSource, poolSource, poolDestination, userDestination, this.poolToken, this.feeAccount, hostFeeAccount, this.swapProgramId, this.tokenProgramId, amountIn, minimumAmountOut)), this.payer, userTransferAuthority);
   }
 
-  static swapInstruction(tokenSwap, authority, userSource, poolSource, poolDestination, userDestination, poolMint, feeAccount, hostFeeAccount, swapProgramId, tokenProgramId, amountIn, minimumAmountOut) {
+  static swapInstruction(tokenSwap, authority, userTransferAuthority, userSource, poolSource, poolDestination, userDestination, poolMint, feeAccount, hostFeeAccount, swapProgramId, tokenProgramId, amountIn, minimumAmountOut) {
     const dataLayout = BufferLayout.struct([BufferLayout.u8('instruction'), uint64('amountIn'), uint64('minimumAmountOut')]);
     const data = Buffer.alloc(dataLayout.span);
     dataLayout.encode({
@@ -435,6 +437,10 @@ class TokenSwap {
     }, {
       pubkey: authority,
       isSigner: false,
+      isWritable: false
+    }, {
+      pubkey: userTransferAuthority,
+      isSigner: true,
       isWritable: false
     }, {
       pubkey: userSource,
@@ -485,17 +491,18 @@ class TokenSwap {
    * @param userAccountA User account for token A
    * @param userAccountB User account for token B
    * @param poolAccount User account for pool token
+   * @param userTransferAuthority Account delegated to transfer user's tokens
    * @param poolTokenAmount Amount of pool tokens to mint
    * @param maximumTokenA The maximum amount of token A to deposit
    * @param maximumTokenB The maximum amount of token B to deposit
    */
 
 
-  async depositAllTokenTypes(userAccountA, userAccountB, poolAccount, poolTokenAmount, maximumTokenA, maximumTokenB) {
-    return await sendAndConfirmTransaction('depositAllTokenTypes', this.connection, new web3_js.Transaction().add(TokenSwap.depositAllTokenTypesInstruction(this.tokenSwap, this.authority, userAccountA, userAccountB, this.tokenAccountA, this.tokenAccountB, this.poolToken, poolAccount, this.swapProgramId, this.tokenProgramId, poolTokenAmount, maximumTokenA, maximumTokenB)), this.payer);
+  async depositAllTokenTypes(userAccountA, userAccountB, poolAccount, userTransferAuthority, poolTokenAmount, maximumTokenA, maximumTokenB) {
+    return await sendAndConfirmTransaction('depositAllTokenTypes', this.connection, new web3_js.Transaction().add(TokenSwap.depositAllTokenTypesInstruction(this.tokenSwap, this.authority, userTransferAuthority.publicKey, userAccountA, userAccountB, this.tokenAccountA, this.tokenAccountB, this.poolToken, poolAccount, this.swapProgramId, this.tokenProgramId, poolTokenAmount, maximumTokenA, maximumTokenB)), this.payer, userTransferAuthority);
   }
 
-  static depositAllTokenTypesInstruction(tokenSwap, authority, sourceA, sourceB, intoA, intoB, poolToken, poolAccount, swapProgramId, tokenProgramId, poolTokenAmount, maximumTokenA, maximumTokenB) {
+  static depositAllTokenTypesInstruction(tokenSwap, authority, userTransferAuthority, sourceA, sourceB, intoA, intoB, poolToken, poolAccount, swapProgramId, tokenProgramId, poolTokenAmount, maximumTokenA, maximumTokenB) {
     const dataLayout = BufferLayout.struct([BufferLayout.u8('instruction'), uint64('poolTokenAmount'), uint64('maximumTokenA'), uint64('maximumTokenB')]);
     const data = Buffer.alloc(dataLayout.span);
     dataLayout.encode({
@@ -512,6 +519,10 @@ class TokenSwap {
     }, {
       pubkey: authority,
       isSigner: false,
+      isWritable: false
+    }, {
+      pubkey: userTransferAuthority,
+      isSigner: true,
       isWritable: false
     }, {
       pubkey: sourceA,
@@ -554,17 +565,18 @@ class TokenSwap {
    * @param userAccountA User account for token A
    * @param userAccountB User account for token B
    * @param poolAccount User account for pool token
+   * @param userTransferAuthority Account delegated to transfer user's tokens
    * @param poolTokenAmount Amount of pool tokens to burn
    * @param minimumTokenA The minimum amount of token A to withdraw
    * @param minimumTokenB The minimum amount of token B to withdraw
    */
 
 
-  async withdrawAllTokenTypes(userAccountA, userAccountB, poolAccount, poolTokenAmount, minimumTokenA, minimumTokenB) {
-    return await sendAndConfirmTransaction('withdraw', this.connection, new web3_js.Transaction().add(TokenSwap.withdrawAllTokenTypesInstruction(this.tokenSwap, this.authority, this.poolToken, this.feeAccount, poolAccount, this.tokenAccountA, this.tokenAccountB, userAccountA, userAccountB, this.swapProgramId, this.tokenProgramId, poolTokenAmount, minimumTokenA, minimumTokenB)), this.payer);
+  async withdrawAllTokenTypes(userAccountA, userAccountB, poolAccount, userTransferAuthority, poolTokenAmount, minimumTokenA, minimumTokenB) {
+    return await sendAndConfirmTransaction('withdraw', this.connection, new web3_js.Transaction().add(TokenSwap.withdrawAllTokenTypesInstruction(this.tokenSwap, this.authority, userTransferAuthority.publicKey, this.poolToken, this.feeAccount, poolAccount, this.tokenAccountA, this.tokenAccountB, userAccountA, userAccountB, this.swapProgramId, this.tokenProgramId, poolTokenAmount, minimumTokenA, minimumTokenB)), this.payer, userTransferAuthority);
   }
 
-  static withdrawAllTokenTypesInstruction(tokenSwap, authority, poolMint, feeAccount, sourcePoolAccount, fromA, fromB, userAccountA, userAccountB, swapProgramId, tokenProgramId, poolTokenAmount, minimumTokenA, minimumTokenB) {
+  static withdrawAllTokenTypesInstruction(tokenSwap, authority, userTransferAuthority, poolMint, feeAccount, sourcePoolAccount, fromA, fromB, userAccountA, userAccountB, swapProgramId, tokenProgramId, poolTokenAmount, minimumTokenA, minimumTokenB) {
     const dataLayout = BufferLayout.struct([BufferLayout.u8('instruction'), uint64('poolTokenAmount'), uint64('minimumTokenA'), uint64('minimumTokenB')]);
     const data = Buffer.alloc(dataLayout.span);
     dataLayout.encode({
@@ -581,6 +593,10 @@ class TokenSwap {
     }, {
       pubkey: authority,
       isSigner: false,
+      isWritable: false
+    }, {
+      pubkey: userTransferAuthority,
+      isSigner: true,
       isWritable: false
     }, {
       pubkey: poolMint,
@@ -625,16 +641,17 @@ class TokenSwap {
    * Deposit one side of tokens into the pool
    * @param userAccount User account to deposit token A or B
    * @param poolAccount User account to receive pool tokens
+   * @param userTransferAuthority Account delegated to transfer user's tokens
    * @param sourceTokenAmount The amount of token A or B to deposit
    * @param minimumPoolTokenAmount Minimum amount of pool tokens to mint
    */
 
 
-  async depositSingleTokenTypeExactAmountIn(userAccount, poolAccount, sourceTokenAmount, minimumPoolTokenAmount) {
-    return await sendAndConfirmTransaction('depositSingleTokenTypeExactAmountIn', this.connection, new web3_js.Transaction().add(TokenSwap.depositSingleTokenTypeExactAmountInInstruction(this.tokenSwap, this.authority, userAccount, this.tokenAccountA, this.tokenAccountB, this.poolToken, poolAccount, this.swapProgramId, this.tokenProgramId, sourceTokenAmount, minimumPoolTokenAmount)), this.payer);
+  async depositSingleTokenTypeExactAmountIn(userAccount, poolAccount, userTransferAuthority, sourceTokenAmount, minimumPoolTokenAmount) {
+    return await sendAndConfirmTransaction('depositSingleTokenTypeExactAmountIn', this.connection, new web3_js.Transaction().add(TokenSwap.depositSingleTokenTypeExactAmountInInstruction(this.tokenSwap, this.authority, userTransferAuthority.publicKey, userAccount, this.tokenAccountA, this.tokenAccountB, this.poolToken, poolAccount, this.swapProgramId, this.tokenProgramId, sourceTokenAmount, minimumPoolTokenAmount)), this.payer, userTransferAuthority);
   }
 
-  static depositSingleTokenTypeExactAmountInInstruction(tokenSwap, authority, source, intoA, intoB, poolToken, poolAccount, swapProgramId, tokenProgramId, sourceTokenAmount, minimumPoolTokenAmount) {
+  static depositSingleTokenTypeExactAmountInInstruction(tokenSwap, authority, userTransferAuthority, source, intoA, intoB, poolToken, poolAccount, swapProgramId, tokenProgramId, sourceTokenAmount, minimumPoolTokenAmount) {
     const dataLayout = BufferLayout.struct([BufferLayout.u8('instruction'), uint64('sourceTokenAmount'), uint64('minimumPoolTokenAmount')]);
     const data = Buffer.alloc(dataLayout.span);
     dataLayout.encode({
@@ -650,6 +667,10 @@ class TokenSwap {
     }, {
       pubkey: authority,
       isSigner: false,
+      isWritable: false
+    }, {
+      pubkey: userTransferAuthority,
+      isSigner: true,
       isWritable: false
     }, {
       pubkey: source,
@@ -687,16 +708,17 @@ class TokenSwap {
    *
    * @param userAccount User account to receive token A or B
    * @param poolAccount User account to burn pool token
+   * @param userTransferAuthority Account delegated to transfer user's tokens
    * @param destinationTokenAmount The amount of token A or B to withdraw
    * @param maximumPoolTokenAmount Maximum amount of pool tokens to burn
    */
 
 
-  async withdrawSingleTokenTypeExactAmountOut(userAccount, poolAccount, destinationTokenAmount, maximumPoolTokenAmount) {
-    return await sendAndConfirmTransaction('withdrawSingleTokenTypeExactAmountOut', this.connection, new web3_js.Transaction().add(TokenSwap.withdrawSingleTokenTypeExactAmountOutInstruction(this.tokenSwap, this.authority, this.poolToken, this.feeAccount, poolAccount, this.tokenAccountA, this.tokenAccountB, userAccount, this.swapProgramId, this.tokenProgramId, destinationTokenAmount, maximumPoolTokenAmount)), this.payer);
+  async withdrawSingleTokenTypeExactAmountOut(userAccount, poolAccount, userTransferAuthority, destinationTokenAmount, maximumPoolTokenAmount) {
+    return await sendAndConfirmTransaction('withdrawSingleTokenTypeExactAmountOut', this.connection, new web3_js.Transaction().add(TokenSwap.withdrawSingleTokenTypeExactAmountOutInstruction(this.tokenSwap, this.authority, userTransferAuthority.publicKey, this.poolToken, this.feeAccount, poolAccount, this.tokenAccountA, this.tokenAccountB, userAccount, this.swapProgramId, this.tokenProgramId, destinationTokenAmount, maximumPoolTokenAmount)), this.payer, userTransferAuthority);
   }
 
-  static withdrawSingleTokenTypeExactAmountOutInstruction(tokenSwap, authority, poolMint, feeAccount, sourcePoolAccount, fromA, fromB, userAccount, swapProgramId, tokenProgramId, destinationTokenAmount, maximumPoolTokenAmount) {
+  static withdrawSingleTokenTypeExactAmountOutInstruction(tokenSwap, authority, userTransferAuthority, poolMint, feeAccount, sourcePoolAccount, fromA, fromB, userAccount, swapProgramId, tokenProgramId, destinationTokenAmount, maximumPoolTokenAmount) {
     const dataLayout = BufferLayout.struct([BufferLayout.u8('instruction'), uint64('destinationTokenAmount'), uint64('maximumPoolTokenAmount')]);
     const data = Buffer.alloc(dataLayout.span);
     dataLayout.encode({
@@ -712,6 +734,10 @@ class TokenSwap {
     }, {
       pubkey: authority,
       isSigner: false,
+      isWritable: false
+    }, {
+      pubkey: userTransferAuthority,
+      isSigner: true,
       isWritable: false
     }, {
       pubkey: poolMint,

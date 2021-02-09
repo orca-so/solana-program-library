@@ -73,6 +73,7 @@ declare module '@orca-so/spl-token-swap' {
       hostFeeNumerator: number,
       hostFeeDenominator: number,
       curveType: number,
+      amp?: number,
     ): TransactionInstruction;
 
     static loadTokenSwap(
@@ -106,6 +107,7 @@ declare module '@orca-so/spl-token-swap' {
       hostFeeNumerator: number,
       hostFeeDenominator: number,
       curveType: number,
+      amp?: number,
     ): Promise<TokenSwap>;
 
     swap(
