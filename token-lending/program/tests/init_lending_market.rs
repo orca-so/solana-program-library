@@ -10,6 +10,7 @@ use solana_sdk::{
 };
 use spl_token_lending::{
     error::LendingError, instruction::init_lending_market, processor::process_instruction,
+    state::PROGRAM_VERSION,
 };
 
 #[tokio::test]
@@ -20,12 +21,15 @@ async fn test_success() {
         processor!(process_instruction),
     );
 
+    // limit to track compute unit increase
+    test.set_bpf_compute_max_units(5_000);
+
     let usdc_mint = add_usdc_mint(&mut test);
     let (mut banks_client, payer, _recent_blockhash) = test.start().await;
 
     let lending_market = TestLendingMarket::init(&mut banks_client, usdc_mint.pubkey, &payer).await;
     let lending_market_info = lending_market.get_state(&mut banks_client).await;
-    assert_eq!(lending_market_info.is_initialized, true);
+    assert_eq!(lending_market_info.version, PROGRAM_VERSION);
     assert_eq!(lending_market_info.quote_token_mint, usdc_mint.pubkey);
 }
 
@@ -38,15 +42,14 @@ async fn test_already_initialized() {
     );
 
     let usdc_mint = add_usdc_mint(&mut test);
-    let market_pubkey = add_lending_market(&mut test, usdc_mint.pubkey)
-        .keypair
-        .pubkey();
+    let existing_market = add_lending_market(&mut test, usdc_mint.pubkey);
     let (mut banks_client, payer, recent_blockhash) = test.start().await;
 
     let mut transaction = Transaction::new_with_payer(
         &[init_lending_market(
             spl_token_lending::id(),
-            market_pubkey,
+            existing_market.pubkey,
+            existing_market.owner.pubkey(),
             usdc_mint.pubkey,
         )],
         Some(&payer.pubkey()),

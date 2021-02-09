@@ -17,6 +17,9 @@ async fn test_success() {
         processor!(process_instruction),
     );
 
+    // limit to track compute unit increase
+    test.set_bpf_compute_max_units(31_000);
+
     let user_accounts_owner = Keypair::new();
     let usdc_mint = add_usdc_mint(&mut test);
     let lending_market = add_lending_market(&mut test, usdc_mint.pubkey);

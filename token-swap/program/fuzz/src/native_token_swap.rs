@@ -10,14 +10,12 @@ use spl_token_swap::{
         self, DepositAllTokenTypes, DepositSingleTokenTypeExactAmountIn, Swap,
         WithdrawAllTokenTypes, WithdrawSingleTokenTypeExactAmountOut,
     },
-    state::SwapInfo,
+    state::SwapVersion,
 };
 
 use spl_token::instruction::approve;
 
-use solana_program::{
-    bpf_loader, entrypoint::ProgramResult, program_pack::Pack, pubkey::Pubkey, system_program,
-};
+use solana_program::{bpf_loader, entrypoint::ProgramResult, pubkey::Pubkey, system_program};
 
 pub struct NativeTokenSwap {
     pub user_account: NativeAccountData,
@@ -51,7 +49,8 @@ impl NativeTokenSwap {
     ) -> Self {
         let mut user_account = NativeAccountData::new(0, system_program::id());
         user_account.is_signer = true;
-        let mut swap_account = NativeAccountData::new(SwapInfo::LEN, spl_token_swap::id());
+        let mut swap_account =
+            NativeAccountData::new(SwapVersion::LATEST_LEN, spl_token_swap::id());
         let (authority_key, nonce) = Pubkey::find_program_address(
             &[&swap_account.key.to_bytes()[..]],
             &spl_token_swap::id(),
@@ -152,11 +151,13 @@ impl NativeTokenSwap {
         token_b_account: &mut NativeAccountData,
         instruction: Swap,
     ) -> ProgramResult {
+        let mut user_transfer_account = NativeAccountData::new(0, system_program::id());
+        user_transfer_account.is_signer = true;
         do_process_instruction(
             approve(
                 &self.token_program_account.key,
                 &token_a_account.key,
-                &self.authority_account.key,
+                &user_transfer_account.key,
                 &self.user_account.key,
                 &[],
                 instruction.amount_in,
@@ -164,7 +165,7 @@ impl NativeTokenSwap {
             .unwrap(),
             &[
                 token_a_account.as_account_info(),
-                self.authority_account.as_account_info(),
+                user_transfer_account.as_account_info(),
                 self.user_account.as_account_info(),
             ],
         )
@@ -174,6 +175,7 @@ impl NativeTokenSwap {
             &spl_token::id(),
             &self.swap_account.key,
             &self.authority_account.key,
+            &user_transfer_account.key,
             &token_a_account.key,
             &self.token_a_account.key,
             &self.token_b_account.key,
@@ -190,6 +192,7 @@ impl NativeTokenSwap {
             &[
                 self.swap_account.as_account_info(),
                 self.authority_account.as_account_info(),
+                user_transfer_account.as_account_info(),
                 token_a_account.as_account_info(),
                 self.token_a_account.as_account_info(),
                 self.token_b_account.as_account_info(),
@@ -208,11 +211,13 @@ impl NativeTokenSwap {
         token_a_account: &mut NativeAccountData,
         instruction: Swap,
     ) -> ProgramResult {
+        let mut user_transfer_account = NativeAccountData::new(0, system_program::id());
+        user_transfer_account.is_signer = true;
         do_process_instruction(
             approve(
                 &self.token_program_account.key,
                 &token_b_account.key,
-                &self.authority_account.key,
+                &user_transfer_account.key,
                 &self.user_account.key,
                 &[],
                 instruction.amount_in,
@@ -220,7 +225,7 @@ impl NativeTokenSwap {
             .unwrap(),
             &[
                 token_b_account.as_account_info(),
-                self.authority_account.as_account_info(),
+                user_transfer_account.as_account_info(),
                 self.user_account.as_account_info(),
             ],
         )
@@ -231,6 +236,7 @@ impl NativeTokenSwap {
             &spl_token::id(),
             &self.swap_account.key,
             &self.authority_account.key,
+            &user_transfer_account.key,
             &token_b_account.key,
             &self.token_b_account.key,
             &self.token_a_account.key,
@@ -247,6 +253,7 @@ impl NativeTokenSwap {
             &[
                 self.swap_account.as_account_info(),
                 self.authority_account.as_account_info(),
+                user_transfer_account.as_account_info(),
                 token_b_account.as_account_info(),
                 self.token_b_account.as_account_info(),
                 self.token_a_account.as_account_info(),
@@ -266,11 +273,13 @@ impl NativeTokenSwap {
         pool_account: &mut NativeAccountData,
         mut instruction: DepositAllTokenTypes,
     ) -> ProgramResult {
+        let mut user_transfer_account = NativeAccountData::new(0, system_program::id());
+        user_transfer_account.is_signer = true;
         do_process_instruction(
             approve(
                 &self.token_program_account.key,
                 &token_a_account.key,
-                &self.authority_account.key,
+                &user_transfer_account.key,
                 &self.user_account.key,
                 &[],
                 instruction.maximum_token_a_amount,
@@ -278,7 +287,7 @@ impl NativeTokenSwap {
             .unwrap(),
             &[
                 token_a_account.as_account_info(),
-                self.authority_account.as_account_info(),
+                user_transfer_account.as_account_info(),
                 self.user_account.as_account_info(),
             ],
         )
@@ -288,7 +297,7 @@ impl NativeTokenSwap {
             approve(
                 &self.token_program_account.key,
                 &token_b_account.key,
-                &self.authority_account.key,
+                &user_transfer_account.key,
                 &self.user_account.key,
                 &[],
                 instruction.maximum_token_b_amount,
@@ -296,7 +305,7 @@ impl NativeTokenSwap {
             .unwrap(),
             &[
                 token_b_account.as_account_info(),
-                self.authority_account.as_account_info(),
+                user_transfer_account.as_account_info(),
                 self.user_account.as_account_info(),
             ],
         )
@@ -313,6 +322,7 @@ impl NativeTokenSwap {
             &spl_token::id(),
             &self.swap_account.key,
             &self.authority_account.key,
+            &user_transfer_account.key,
             &token_a_account.key,
             &token_b_account.key,
             &self.token_a_account.key,
@@ -328,6 +338,7 @@ impl NativeTokenSwap {
             &[
                 self.swap_account.as_account_info(),
                 self.authority_account.as_account_info(),
+                user_transfer_account.as_account_info(),
                 token_a_account.as_account_info(),
                 token_b_account.as_account_info(),
                 self.token_a_account.as_account_info(),
@@ -346,6 +357,8 @@ impl NativeTokenSwap {
         token_b_account: &mut NativeAccountData,
         mut instruction: WithdrawAllTokenTypes,
     ) -> ProgramResult {
+        let mut user_transfer_account = NativeAccountData::new(0, system_program::id());
+        user_transfer_account.is_signer = true;
         let pool_token_amount = native_token::get_token_balance(&pool_account);
         // special logic to avoid withdrawing down to 1 pool token, which
         // eventually causes an error on withdrawing all
@@ -356,7 +369,7 @@ impl NativeTokenSwap {
             approve(
                 &self.token_program_account.key,
                 &pool_account.key,
-                &self.authority_account.key,
+                &user_transfer_account.key,
                 &self.user_account.key,
                 &[],
                 instruction.pool_token_amount,
@@ -364,7 +377,7 @@ impl NativeTokenSwap {
             .unwrap(),
             &[
                 pool_account.as_account_info(),
-                self.authority_account.as_account_info(),
+                user_transfer_account.as_account_info(),
                 self.user_account.as_account_info(),
             ],
         )
@@ -375,6 +388,7 @@ impl NativeTokenSwap {
             &spl_token::id(),
             &self.swap_account.key,
             &self.authority_account.key,
+            &user_transfer_account.key,
             &self.pool_mint_account.key,
             &self.pool_fee_account.key,
             &pool_account.key,
@@ -391,6 +405,7 @@ impl NativeTokenSwap {
             &[
                 self.swap_account.as_account_info(),
                 self.authority_account.as_account_info(),
+                user_transfer_account.as_account_info(),
                 self.pool_mint_account.as_account_info(),
                 pool_account.as_account_info(),
                 self.token_a_account.as_account_info(),
@@ -409,11 +424,13 @@ impl NativeTokenSwap {
         pool_account: &mut NativeAccountData,
         mut instruction: DepositSingleTokenTypeExactAmountIn,
     ) -> ProgramResult {
+        let mut user_transfer_account = NativeAccountData::new(0, system_program::id());
+        user_transfer_account.is_signer = true;
         do_process_instruction(
             approve(
                 &self.token_program_account.key,
                 &source_token_account.key,
-                &self.authority_account.key,
+                &user_transfer_account.key,
                 &self.user_account.key,
                 &[],
                 instruction.source_token_amount,
@@ -421,7 +438,7 @@ impl NativeTokenSwap {
             .unwrap(),
             &[
                 source_token_account.as_account_info(),
-                self.authority_account.as_account_info(),
+                user_transfer_account.as_account_info(),
                 self.user_account.as_account_info(),
             ],
         )
@@ -438,6 +455,7 @@ impl NativeTokenSwap {
             &spl_token::id(),
             &self.swap_account.key,
             &self.authority_account.key,
+            &user_transfer_account.key,
             &source_token_account.key,
             &self.token_a_account.key,
             &self.token_b_account.key,
@@ -452,6 +470,7 @@ impl NativeTokenSwap {
             &[
                 self.swap_account.as_account_info(),
                 self.authority_account.as_account_info(),
+                user_transfer_account.as_account_info(),
                 source_token_account.as_account_info(),
                 self.token_a_account.as_account_info(),
                 self.token_b_account.as_account_info(),
@@ -468,6 +487,8 @@ impl NativeTokenSwap {
         destination_token_account: &mut NativeAccountData,
         mut instruction: WithdrawSingleTokenTypeExactAmountOut,
     ) -> ProgramResult {
+        let mut user_transfer_account = NativeAccountData::new(0, system_program::id());
+        user_transfer_account.is_signer = true;
         let pool_token_amount = native_token::get_token_balance(&pool_account);
         // special logic to avoid withdrawing down to 1 pool token, which
         // eventually causes an error on withdrawing all
@@ -478,7 +499,7 @@ impl NativeTokenSwap {
             approve(
                 &self.token_program_account.key,
                 &pool_account.key,
-                &self.authority_account.key,
+                &user_transfer_account.key,
                 &self.user_account.key,
                 &[],
                 instruction.maximum_pool_token_amount,
@@ -486,7 +507,7 @@ impl NativeTokenSwap {
             .unwrap(),
             &[
                 pool_account.as_account_info(),
-                self.authority_account.as_account_info(),
+                user_transfer_account.as_account_info(),
                 self.user_account.as_account_info(),
             ],
         )
@@ -497,6 +518,7 @@ impl NativeTokenSwap {
             &spl_token::id(),
             &self.swap_account.key,
             &self.authority_account.key,
+            &user_transfer_account.key,
             &self.pool_mint_account.key,
             &self.pool_fee_account.key,
             &pool_account.key,
@@ -512,6 +534,7 @@ impl NativeTokenSwap {
             &[
                 self.swap_account.as_account_info(),
                 self.authority_account.as_account_info(),
+                user_transfer_account.as_account_info(),
                 self.pool_mint_account.as_account_info(),
                 pool_account.as_account_info(),
                 self.token_a_account.as_account_info(),
